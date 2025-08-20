@@ -59,33 +59,37 @@
   </header>
 
   <div class="container">
-    <div class="card"><canvas id="graficoCategorias"></canvas></div>
-    <div class="card"><canvas id="graficoEstados"></canvas></div>
-    <div class="card"><canvas id="graficoBarrios"></canvas></div>
-    <div class="card"><canvas id="graficoReportantes"></canvas></div>
-    <div class="card"><canvas id="graficoLineasTiempo"></canvas></div>
-    <div class="card"><canvas id="graficoMapa"></canvas></div>
+  <div class="card" style="grid-column: span 2; height: 420px;"><canvas id="graficoCategorias" style="height:400px !important;"></canvas></div>
+  <div class="card"><label for="filtroCategoria">Filtrar por categoría:</label> <select id="filtroCategoria"></select><canvas id="graficoEstados" style="margin-top:12px;"></canvas></div>
+  <div class="card"><canvas id="graficoBarrios"></canvas></div>
+  <div class="card"><canvas id="graficoReportantes"></canvas></div>
+  <div class="card" style="height:420px;"><div id="map" style="height:400px;width:100%;border-radius:12px;"></div></div>
   </div>
 
   <footer>
     <p>ESPOL - Reportes Ciudadanos 2025</p>
   </footer>
 
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const url = "dataset_reportaya_200_fechas_2025.csv";
+
+    let registros = [];
+    let radarChart;
 
     async function cargarDatos() {
       const response = await fetch(url);
       const data = await response.text();
       const filas = data.split("\n").map(f => f.split(","));
       const headers = filas[0];
-      const registros = filas.slice(1).map(f => {
+      registros = filas.slice(1).map(f => {
         let obj = {};
         headers.forEach((h, i) => obj[h] = f[i]);
         return obj;
       });
 
-      // --- 1. Gráfico de Categorías de Reporte (Doughnut) ---
+      // --- 1. Distribución por Categoría (Doughnut grande) ---
       const catCount = {};
       registros.forEach(r => {
         let cat = r["Categoria"];
@@ -100,34 +104,46 @@
             backgroundColor: ["#e67e22", "#3498db", "#9b59b6", "#2ecc71", "#f1c40f", "#c0392b"]
           }]
         },
-        options: { plugins: { title: { display: true, text: "Distribución por Categoría" } } }
+        options: { plugins: { title: { display: true, text: "Distribución por Categoría" }, legend: { position: 'right' } } }
       });
 
-      // --- 2. Gráfico de Estados de Reporte (Pie) ---
-      const estadoCount = {};
-      registros.forEach(r => {
-        let est = r["Estado"];
-        if (est) estadoCount[est] = (estadoCount[est] || 0) + 1;
-      });
-      new Chart(document.getElementById("graficoEstados"), {
-        type: "pie",
-        data: {
-          labels: Object.keys(estadoCount),
-          datasets: [{
-            data: Object.values(estadoCount),
-            backgroundColor: ["#27ae60", "#e74c3c", "#f39c12", "#2980b9"]
-          }]
-        },
-        options: { plugins: { title: { display: true, text: "Estado de los Reportes" } } }
-      });
+      // --- 2. Radar de Estado de los reportes con filtro por categoría ---
+      const filtro = document.getElementById("filtroCategoria");
+      filtro.innerHTML = '<option value="TODAS">Todas</option>' + Object.keys(catCount).map(cat => `<option value="${cat}">${cat}</option>`).join("");
 
-      // --- 3. Gráfico de Barrios con más reportes (Bar) ---
+      function actualizarRadar(categoria) {
+        let estados = {};
+        registros.forEach(r => {
+          if (categoria === "TODAS" || r["Categoria"] === categoria) {
+            let est = r["Estado"];
+            if (est) estados[est] = (estados[est] || 0) + 1;
+          }
+        });
+        const ctx = document.getElementById("graficoEstados").getContext("2d");
+        if (radarChart) radarChart.destroy();
+        radarChart = new Chart(ctx, {
+          type: "radar",
+          data: {
+            labels: Object.keys(estados),
+            datasets: [{
+              label: `Cantidad de reportes (${categoria})`,
+              data: Object.values(estados),
+              backgroundColor: "rgba(52,152,219,0.2)",
+              borderColor: "#2980b9"
+            }]
+          },
+          options: { plugins: { title: { display: true, text: "Estado de los reportes" } } }
+        });
+      }
+      filtro.onchange = e => actualizarRadar(e.target.value);
+      actualizarRadar("TODAS");
+
+      // --- 3. Barrios con más reportes (Top 6) ---
       const barrioCount = {};
       registros.forEach(r => {
         let barrio = r["Barrio"];
         if (barrio) barrioCount[barrio] = (barrioCount[barrio] || 0) + 1;
       });
-      // Top 6 barrios
       const topBarrios = Object.entries(barrioCount)
         .sort((a,b) => b[1]-a[1])
         .slice(0,6);
@@ -144,13 +160,12 @@
         options: { plugins: { title: { display: true, text: "Barrios con más reportes" } } }
       });
 
-      // --- 4. Gráfico de personas que más reportan (Horizontal Bar) ---
+      // --- 4. Personas que más reportan (Top 6) ---
       const reportanteCount = {};
       registros.forEach(r => {
         let rep = r["Reportado_por"];
         if (rep) reportanteCount[rep] = (reportanteCount[rep] || 0) + 1;
       });
-      // Top 6 reportantes
       const topReportantes = Object.entries(reportanteCount)
         .sort((a,b) => b[1]-a[1])
         .slice(0,6);
@@ -170,59 +185,25 @@
         }
       });
 
-      // --- 5. Gráfico de reportes por mes (Line) ---
-      const meses = {};
-      registros.forEach(r => {
-        let fecha = r["Fecha_Reporte"];
-        if (fecha) {
-          let [d,m,y] = fecha.split("/");
-          let mes = `${m}/${y}`;
-          meses[mes] = (meses[mes] || 0) + 1;
-        }
-      });
-      const mesesOrdenados = Object.keys(meses).sort((a,b) => {
-        let [ma,ya] = a.split("/"); let [mb,yb] = b.split("/");
-        return ya !== yb ? ya - yb : ma - mb;
-      });
-      new Chart(document.getElementById("graficoLineasTiempo"), {
-        type: "line",
-        data: {
-          labels: mesesOrdenados,
-          datasets: [{
-            label: "Reportes por mes",
-            data: mesesOrdenados.map(m => meses[m]),
-            fill: true,
-            borderColor: "#e67e22",
-            backgroundColor: "rgba(230,126,34,0.2)",
-            tension: 0.3,
-            pointBackgroundColor: "#e67e22"
-          }]
-        },
-        options: { plugins: { title: { display: true, text: "Reportes por mes" } } }
-      });
-
-      // --- 6. Gráfico de dispersión geográfica (Scatter) ---
+      // --- 5. Mapa interactivo con Leaflet ---
       const puntos = registros.map(r => ({
-        x: parseFloat(r["Longitud"]),
-        y: parseFloat(r["Latitud"]),
-        label: r["Categoria"]
-      })).filter(p => !isNaN(p.x) && !isNaN(p.y));
-      new Chart(document.getElementById("graficoMapa"), {
-        type: "scatter",
-        data: {
-          datasets: [{
-            label: "Ubicación de reportes",
-            data: puntos,
-            backgroundColor: "#2980b9"
-          }]
-        },
-        options: {
-          plugins: { title: { display: true, text: "Mapa de reportes (Latitud/Longitud)" } },
-          scales: {
-            x: { title: { display: true, text: "Longitud" } },
-            y: { title: { display: true, text: "Latitud" } }
-          }
-        }
+        lat: parseFloat(r["Latitud"]),
+        lng: parseFloat(r["Longitud"]),
+        categoria: r["Categoria"],
+        estado: r["Estado"],
+        descripcion: r["Descripcion"],
+        barrio: r["Barrio"],
+        reportado_por: r["Reportado_por"]
+      })).filter(p => !isNaN(p.lat) && !isNaN(p.lng));
+
+      const map = L.map('map').setView([puntos[0]?.lat || -2.1, puntos[0]?.lng || -79.9], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+      puntos.forEach(p => {
+        L.marker([p.lat, p.lng]).addTo(map)
+          .bindPopup(`<b>${p.categoria}</b><br>${p.descripcion}<br><b>Estado:</b> ${p.estado}<br><b>Barrio:</b> ${p.barrio}<br><b>Reportado por:</b> ${p.reportado_por}`);
       });
     }
 

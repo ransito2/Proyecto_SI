@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
   <title>Dashboard de Reportes Ciudadanos</title>
@@ -11,38 +12,45 @@
       margin: 0;
       padding: 0;
     }
+
     header {
       background: #34495e;
       color: white;
       padding: 24px;
       text-align: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     }
+
     h1 {
       margin: 0;
       font-size: 28px;
       letter-spacing: 1px;
     }
+
     .container {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
       gap: 24px;
       padding: 24px;
     }
+
     .card {
       background: white;
       border-radius: 14px;
       padding: 24px;
-      box-shadow: 0 4px 16px rgba(44,62,80,0.08);
+      box-shadow: 0 4px 16px rgba(44, 62, 80, 0.08);
       transition: box-shadow 0.2s;
     }
+
     .card:hover {
-      box-shadow: 0 8px 24px rgba(44,62,80,0.16);
+      box-shadow: 0 8px 24px rgba(44, 62, 80, 0.16);
     }
+
     canvas {
       width: 100% !important;
       height: 320px !important;
     }
+
     footer {
       text-align: center;
       padding: 12px;
@@ -52,6 +60,7 @@
     }
   </style>
 </head>
+
 <body>
   <header>
     <h1>📍 Dashboard de Reportes Ciudadanos</h1>
@@ -59,11 +68,23 @@
   </header>
 
   <div class="container">
-  <div class="card" style="grid-column: span 2; height: 420px;"><canvas id="graficoCategorias" style="height:400px !important;"></canvas></div>
-  <div class="card"><label for="filtroCategoria">Filtrar por categoría:</label> <select id="filtroCategoria"></select><canvas id="graficoEstados" style="margin-top:12px;"></canvas></div>
-  <div class="card"><canvas id="graficoBarrios"></canvas></div>
-  <div class="card"><canvas id="graficoReportantes"></canvas></div>
-  <div class="card" style="height:420px;"><div id="map" style="height:400px;width:100%;border-radius:12px;"></div></div>
+    <div class="card" style="grid-column: span 2; height: 420px;"><h3 style="margin-top:0; text-align: center;">Distribuci&oacute;n por Categor&iacute;a</h3><canvas id="graficoCategorias"
+  style="max-width:500px;max-height:350px;width:100%;height:350px;display:block;margin:0 auto;"></canvas></div>
+    <div class="card"><h3 style="margin-top:0; text-align: center;">Reportes por Categor&iacute;a</h3><label for="filtroCategoria">Filtrar por categoría:</label> <select
+  id="filtroCategoria"></select><canvas id="graficoEstados" style="margin-top:12px;max-width:500px;max-height:350px;width:100%;height:350px;display:block;margin:0 auto;"></canvas></div>
+    <div class="card">
+  <h3 style="margin-top:0; text-align: center;">Reportes por mes y estado</h3>
+  <label for="filtroEstadoMes">Filtrar por estado:</label>
+  <select id="filtroEstadoMes"></select>
+  <label for="filtroAnio" style="margin-left:12px;">Filtrar por año:</label>
+  <select id="filtroAnio"></select>
+  <canvas id="graficoMeses" style="max-width:500px;max-height:350px;width:100%;height:350px;display:block;margin:0 auto;"></canvas>
+    </div>
+    <div class="card"><h3 style="margin-top:0; text-align: center;">Personas que m&aacute;s reportan</h3><canvas id="graficoReportantes"></canvas></div>
+    <div class="card" style="height:420px;">
+      <h3 style="margin-top:0; text-align: center;">Reportes Activos</h3>
+      <div id="map" style="height:400px;width:100%;border-radius:12px;"></div>
+    </div>
   </div>
 
   <footer>
@@ -101,33 +122,45 @@
           labels: Object.keys(catCount),
           datasets: [{
             data: Object.values(catCount),
-            backgroundColor: ["#e67e22", "#3498db", "#9b59b6", "#2ecc71", "#f1c40f", "#c0392b"]
+            backgroundColor: ["#e67e22", "#3498db", "#9b59b6", "#2ecc71", "#f1c40f", "#c0392b", "#e74c3c", "#2980b9"]
           }]
         },
-        options: { plugins: { title: { display: true, text: "Distribución por Categoría" }, legend: { position: 'right' } } }
+        options: {
+          plugins: {
+            legend: { position: 'right' },
+            tooltip: { enabled: true }
+          },
+          animation: true,
+          maintainAspectRatio: false,
+          responsive: true
+        }
       });
 
       // --- 2. Radar de Estado de los reportes con filtro por categoría ---
       const filtro = document.getElementById("filtroCategoria");
       filtro.innerHTML = '<option value="TODAS">Todas</option>' + Object.keys(catCount).map(cat => `<option value="${cat}">${cat}</option>`).join("");
 
+      const estadosValidos = ["Pendiente", "Resuelto", "En revision"];
+
       function actualizarRadar(categoria) {
         let estados = {};
         registros.forEach(r => {
-          if (categoria === "TODAS" || r["Categoria"] === categoria) {
+          if ((categoria === "TODAS" || r["Categoria"] === categoria) && estadosValidos.includes(r["Estado"])) {
             let est = r["Estado"];
             if (est) estados[est] = (estados[est] || 0) + 1;
           }
         });
+        // Asegura que todos los estados aparezcan aunque tengan 0
+        estadosValidos.forEach(e => { if (!(e in estados)) estados[e] = 0; });
         const ctx = document.getElementById("graficoEstados").getContext("2d");
         if (radarChart) radarChart.destroy();
         radarChart = new Chart(ctx, {
           type: "radar",
           data: {
-            labels: Object.keys(estados),
+            labels: estadosValidos,
             datasets: [{
               label: `Cantidad de reportes (${categoria})`,
-              data: Object.values(estados),
+              data: estadosValidos.map(e => estados[e]),
               backgroundColor: "rgba(52,152,219,0.2)",
               borderColor: "#2980b9"
             }]
@@ -138,27 +171,79 @@
       filtro.onchange = e => actualizarRadar(e.target.value);
       actualizarRadar("TODAS");
 
-      // --- 3. Barrios con más reportes (Top 6) ---
-      const barrioCount = {};
-      registros.forEach(r => {
-        let barrio = r["Barrio"];
-        if (barrio) barrioCount[barrio] = (barrioCount[barrio] || 0) + 1;
-      });
-      const topBarrios = Object.entries(barrioCount)
-        .sort((a,b) => b[1]-a[1])
-        .slice(0,6);
-      new Chart(document.getElementById("graficoBarrios"), {
-        type: "bar",
-        data: {
-          labels: topBarrios.map(b => b[0]),
-          datasets: [{
-            label: "Reportes",
-            data: topBarrios.map(b => b[1]),
-            backgroundColor: "#8e44ad"
-          }]
-        },
-        options: { plugins: { title: { display: true, text: "Barrios con más reportes" } } }
-      });
+      // --- 3. Reportes por mes y estado (Gráfico de puntos con filtro por estado y año) ---
+      const meses = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
+      const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+      // Filtros
+      const filtroEstadoMes = document.getElementById("filtroEstadoMes");
+      const filtroAnio = document.getElementById("filtroAnio");
+      filtroEstadoMes.innerHTML = '<option value="TODOS">Todos</option>' + estadosValidos.map(e => `<option value="${e}">${e}</option>`).join("");
+      // Obtener años únicos
+      const aniosUnicos = Array.from(new Set(registros.map(r => {
+        let fecha = r["Fecha_Reporte"];
+        if (!fecha) return null;
+        let partes = fecha.split("/");
+        return partes[2];
+      }).filter(a => a)));
+      filtroAnio.innerHTML = '<option value="TODOS">Todos</option>' + aniosUnicos.map(a => `<option value="${a}">${a}</option>`).join("");
+
+      let chartMeses;
+      function actualizarMeses() {
+        const estadoSel = filtroEstadoMes.value;
+        const anioSel = filtroAnio.value;
+        // Contar reportes por mes
+        let conteoMes = {};
+        registros.forEach(r => {
+          let fecha = r["Fecha_Reporte"];
+          let estado = r["Estado"];
+          if (!fecha) return;
+          let partes = fecha.split("/");
+          let mes = partes[1];
+          let anio = partes[2];
+          if (meses.includes(mes) && (estadoSel === "TODOS" || estado === estadoSel) && (anioSel === "TODOS" || anio === anioSel)) {
+            conteoMes[mes] = (conteoMes[mes] || 0) + 1;
+          }
+        });
+        // Ordenar meses
+        let labels = meses;
+        let data = labels.map(m => conteoMes[m] || 0);
+        // Destruir gráfico anterior
+        if (chartMeses) chartMeses.destroy();
+        chartMeses = new Chart(document.getElementById("graficoMeses"), {
+          type: "scatter",
+          data: {
+            labels: labels.map((m, i) => nombresMeses[i]),
+            datasets: [{
+              label: "Reportes por mes",
+              data: labels.map((m, i) => ({ x: i + 1, y: conteoMes[m] || 0 })),
+              backgroundColor: "#e67e22"
+            }]
+          },
+          options: {
+            plugins: { title: { display: true,  }, legend: { display: false }, tooltip: { enabled: false } },
+            animation: false,
+            scales: {
+              x: {
+                type: 'linear',
+                min: 1,
+                max: 12,
+                ticks: {
+                  callback: function (value, index) { return nombresMeses[index] || value; },
+                  stepSize: 1
+                },
+                title: { display: true, text: 'Mes' }
+              },
+              y: {
+                title: { display: true, text: 'Cantidad' },
+                beginAtZero: true
+              }
+            }
+          }
+        });
+      }
+      filtroEstadoMes.onchange = actualizarMeses;
+      filtroAnio.onchange = actualizarMeses;
+      actualizarMeses();
 
       // --- 4. Personas que más reportan (Top 6) ---
       const reportanteCount = {};
@@ -167,8 +252,8 @@
         if (rep) reportanteCount[rep] = (reportanteCount[rep] || 0) + 1;
       });
       const topReportantes = Object.entries(reportanteCount)
-        .sort((a,b) => b[1]-a[1])
-        .slice(0,6);
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6);
       new Chart(document.getElementById("graficoReportantes"), {
         type: "bar",
         data: {
@@ -179,9 +264,10 @@
             backgroundColor: "#16a085"
           }]
         },
-        options: { 
+        options: {
           indexAxis: "y",
-          plugins: { title: { display: true, text: "Personas que más reportan" } }
+          plugins: { title: { display: true,  }, tooltip: { enabled: false } },
+          animation: false
         }
       });
 
@@ -210,4 +296,5 @@
     cargarDatos();
   </script>
 </body>
+
 </html>

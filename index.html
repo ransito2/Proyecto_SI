@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <title>Dashboard ReportaYa!</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     body {
       font-family: 'Segoe UI', Arial, sans-serif;
@@ -82,7 +83,7 @@
   <select id="filtroAnio"></select>
   <canvas id="graficoMeses" style="max-width:500px;max-height:350px;width:100%;height:350px;display:block;margin:0 auto;"></canvas>
     </div>
-    <div class="card"><h3 style="margin-top:0; text-align: center;">Personas que m&aacute;s reportan</h3><canvas id="graficoReportantes"></canvas></div>
+  <div class="card"><h3 style="margin-top:0; text-align: center;">Parroquias donde más se han reportado</h3><canvas id="graficoParroquias" style="max-width:500px;max-height:350px;width:100%;height:350px;display:block;margin:0 auto;"></canvas></div>
     <div class="card" style="height:420px;">
       <h3 style="margin-top:0; text-align: center;">Reportes Activos</h3>
       <div id="map" style="height:400px;width:100%;border-radius:12px;"></div>
@@ -102,15 +103,11 @@
     let radarChart;
 
     async function cargarDatos() {
-      const response = await fetch(url);
-      const data = await response.text();
-      const filas = data.split("\n").map(f => f.split(","));
-      const headers = filas[0];
-      registros = filas.slice(1).map(f => {
-        let obj = {};
-        headers.forEach((h, i) => obj[h] = f[i]);
-        return obj;
-      });
+  const response = await fetch(url);
+  const data = await response.text();
+  // Usar PapaParse para parsear el CSV correctamente
+  const parsed = Papa.parse(data, { header: true, skipEmptyLines: true });
+  registros = parsed.data;
 
       // --- 1. Distribución por Categoría (Doughnut grande) ---
       const catCount = {};
@@ -142,7 +139,7 @@
       const filtro = document.getElementById("filtroCategoria");
       filtro.innerHTML = '<option value="TODAS">Todas</option>' + Object.keys(catCount).map(cat => `<option value="${cat}">${cat}</option>`).join("");
 
-      const estadosValidos = ["Pendiente", "Resuelto", "En revision"];
+      const estadosValidos = ["Pendiente", "Resuelto", "En revisión"];
 
       function actualizarRadar(categoria) {
         let estados = {};
@@ -180,12 +177,12 @@
       const filtroEstadoMes = document.getElementById("filtroEstadoMes");
       const filtroAnio = document.getElementById("filtroAnio");
       filtroEstadoMes.innerHTML = '<option value="TODOS">Todos</option>' + estadosValidos.map(e => `<option value="${e}">${e}</option>`).join("");
-      // Obtener años únicos
+      // Obtener años únicos (nuevo formato YYYY-MM-DD)
       const aniosUnicos = Array.from(new Set(registros.map(r => {
         let fecha = r["Fecha_Reporte"];
         if (!fecha) return null;
-        let partes = fecha.split("/");
-        return partes[2];
+        let partes = fecha.split("-");
+        return partes[0];
       }).filter(a => a)));
       filtroAnio.innerHTML = '<option value="TODOS">Todos</option>' + aniosUnicos.map(a => `<option value="${a}">${a}</option>`).join("");
 
@@ -199,9 +196,9 @@
           let fecha = r["Fecha_Reporte"];
           let estado = r["Estado"];
           if (!fecha) return;
-          let partes = fecha.split("/");
+          let partes = fecha.split("-");
+          let anio = partes[0];
           let mes = partes[1];
-          let anio = partes[2];
           if (meses.includes(mes) && (estadoSel === "TODOS" || estado === estadoSel) && (anioSel === "TODOS" || anio === anioSel)) {
             conteoMes[mes] = (conteoMes[mes] || 0) + 1;
           }
@@ -222,7 +219,7 @@
             }]
           },
           options: {
-            plugins: { title: { display: true,  }, legend: { display: false }, tooltip: { enabled: false } },
+            plugins: { title: { display: true }, legend: { display: false }, tooltip: { enabled: false } },
             animation: false,
             scales: {
               x: {
@@ -248,28 +245,32 @@
       actualizarMeses();
 
       // --- 4. Personas que más reportan (Top 6) ---
-      const reportanteCount = {};
+      // --- 4. Parroquias donde más se han reportado (Top 8) ---
+      const parroquiaCount = {};
       registros.forEach(r => {
-        let rep = r["Reportado_por"];
-        if (rep) reportanteCount[rep] = (reportanteCount[rep] || 0) + 1;
+        let parr = r["Parroquia"];
+        if (parr) parroquiaCount[parr] = (parroquiaCount[parr] || 0) + 1;
       });
-      const topReportantes = Object.entries(reportanteCount)
+      const topParroquias = Object.entries(parroquiaCount)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 6);
-      new Chart(document.getElementById("graficoReportantes"), {
+        .slice(0, 8);
+      new Chart(document.getElementById("graficoParroquias"), {
         type: "bar",
         data: {
-          labels: topReportantes.map(r => r[0]),
+          labels: topParroquias.map(r => r[0]),
           datasets: [{
             label: "Reportes",
-            data: topReportantes.map(r => r[1]),
-            backgroundColor: "#16a085"
+            data: topParroquias.map(r => r[1]),
+            backgroundColor: "#db2c49"
           }]
         },
         options: {
           indexAxis: "y",
-          plugins: { title: { display: true,  }, tooltip: { enabled: false } },
-          animation: false
+          plugins: { title: { display: false }, tooltip: { enabled: true } },
+          animation: true,
+          responsive: true,
+          maintainAspectRatio: false,
+          devicePixelRatio: 2
         }
       });
 
